@@ -26,7 +26,7 @@ async function bootstrap() {
   // Graceful shutdown
   app.enableShutdownHooks();
 
-  await app.listen(port);
+  await app.listen(port, "0.0.0.0");
   Logger.log(`🚀 Application is running on: http://localhost:${port}`, 'Bootstrap');
   Logger.log(`📊 Health check: http://localhost:${port}/health`, 'Bootstrap');
 }

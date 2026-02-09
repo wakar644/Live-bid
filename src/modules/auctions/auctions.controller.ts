@@ -7,16 +7,22 @@ import {
     Query,
     UseGuards,
     ParseUUIDPipe,
+    ParseIntPipe,
+    DefaultValuePipe,
 } from '@nestjs/common';
 import { AuctionsService } from './auctions.service';
 import { CreateAuctionDto, PlaceBidDto, ListAuctionsDto } from './dto';
 import { JwtAuthGuard } from '../../common/guards';
 import { CurrentUser, Public } from '../../common/decorators';
 import { User } from '../../entities';
+import { BidsService } from '../bids/bids.service';
 
 @Controller('auctions')
 export class AuctionsController {
-    constructor(private readonly auctionsService: AuctionsService) { }
+    constructor(
+        private readonly auctionsService: AuctionsService,
+        private readonly bidsService: BidsService,
+    ) { }
 
     @Post()
     @UseGuards(JwtAuthGuard)
@@ -34,6 +40,27 @@ export class AuctionsController {
     @Public()
     async findOne(@Param('id', ParseUUIDPipe) id: string) {
         return this.auctionsService.findOne(id);
+    }
+
+    @Get(':id/bids')
+    @Public()
+    async getBids(
+        @Param('id', ParseUUIDPipe) id: string,
+        @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    ) {
+        const bids = await this.bidsService.findByAuctionId(id, limit);
+        return {
+            auctionId: id,
+            bids: bids.map((bid) => ({
+                id: bid.id,
+                amount: bid.amount,
+                createdAt: bid.createdAt,
+                bidder: bid.bidder
+                    ? { id: bid.bidder.id, email: bid.bidder.email }
+                    : null,
+            })),
+            total: bids.length,
+        };
     }
 
     @Post(':id/bid')
