@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Form, InputNumber, Button, notification } from 'antd';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { auctionsApi } from '../api/auctions.api';
 import { useAuth } from '../auth/AuthContext';
 
@@ -8,7 +9,6 @@ interface BidFormProps {
     currentPrice: number;
     minIncrement?: number;
     disabled?: boolean;
-    onBidSuccess?: () => void;
 }
 
 export const BidForm: React.FC<BidFormProps> = ({
@@ -16,22 +16,20 @@ export const BidForm: React.FC<BidFormProps> = ({
     currentPrice,
     minIncrement = 1,
     disabled = false,
-    onBidSuccess,
 }) => {
     const [form] = Form.useForm();
-    const [loading, setLoading] = useState(false);
+    const queryClient = useQueryClient();
     const { refreshUser } = useAuth();
 
     const minBidAmount = Number(currentPrice) + Number(minIncrement);
 
-    const onFinish = async (values: { amount: number }) => {
-        setLoading(true);
-        try {
-            await auctionsApi.placeBid(auctionId, { amount: values.amount });
-
+    // Use TanStack Query mutation for placing bids
+    const mutation = useMutation({
+        mutationFn: (amount: number) => auctionsApi.placeBid(auctionId, { amount }),
+        onSuccess: async (_data, variables) => {
             notification.success({
                 message: 'Bid Placed',
-                description: `Successfully placed bid of $${values.amount.toFixed(2)}`,
+                description: `Successfully placed bid of $${variables.toFixed(2)}`,
             });
 
             // Refresh user balance after successful bid
@@ -39,20 +37,22 @@ export const BidForm: React.FC<BidFormProps> = ({
 
             form.resetFields();
 
-            // Notify parent to re-fetch auction data
-            if (onBidSuccess) {
-                onBidSuccess();
-            }
-        } catch (error: any) {
+            // Invalidate queries to trigger re-fetch
+            queryClient.invalidateQueries({ queryKey: ['auction', auctionId] });
+            queryClient.invalidateQueries({ queryKey: ['auction-bids', auctionId] });
+        },
+        onError: (error: any) => {
             // Show backend validation errors
             const errorMessage = error.response?.data?.message || 'Failed to place bid';
             notification.error({
                 message: 'Bid Failed',
                 description: errorMessage,
             });
-        } finally {
-            setLoading(false);
-        }
+        },
+    });
+
+    const onFinish = (values: { amount: number }) => {
+        mutation.mutate(values.amount);
     };
 
     return (
@@ -84,7 +84,7 @@ export const BidForm: React.FC<BidFormProps> = ({
             </Form.Item>
 
             <Form.Item>
-                <Button type="primary" htmlType="submit" loading={loading} disabled={disabled}>
+                <Button type="primary" htmlType="submit" loading={mutation.isPending} disabled={disabled}>
                     Place Bid
                 </Button>
             </Form.Item>

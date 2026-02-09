@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Descriptions, Tag, List, Typography, Spin, Button, Space, Alert, notification } from 'antd';
 import { EyeOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext';
 import { BidForm } from '../components/BidForm';
 import { auctionsApi } from '../api/auctions.api';
 import { getSocket } from '../sockets/socket';
-import type { Auction, Bid } from '../types/auction';
+
 import type {
     NewBidEvent,
     AuctionEndingSoonEvent,
@@ -21,39 +22,37 @@ export const AuctionDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [auction, setAuction] = useState<Auction | null>(null);
-    const [bids, setBids] = useState<Bid[]>([]);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [viewerCount, setViewerCount] = useState(0);
     const [isEndingSoon, setIsEndingSoon] = useState(false);
     const [socketConnected, setSocketConnected] = useState(false);
 
-    // Fetch auction details and bids
-    const fetchAuction = useCallback(async () => {
-        if (!id) return;
+    // Fetch auction details using TanStack Query
+    const { data: auction, isLoading: auctionLoading, error: auctionError } = useQuery({
+        queryKey: ['auction', id],
+        queryFn: () => auctionsApi.getAuctionById(id!),
+        enabled: !!id,
+    });
 
-        try {
-            const [auctionData, bidsData] = await Promise.all([
-                auctionsApi.getAuctionById(id),
-                auctionsApi.getAuctionBids(id, { limit: 20 }),
-            ]);
-            setAuction(auctionData);
-            setBids(bidsData.bids);
-        } catch (error: any) {
+    // Fetch auction bids using TanStack Query
+    const { data: bidsData, isLoading: bidsLoading } = useQuery({
+        queryKey: ['auction-bids', id],
+        queryFn: () => auctionsApi.getAuctionBids(id!, { limit: 20 }),
+        enabled: !!id,
+    });
+
+    const loading = auctionLoading || bidsLoading;
+    const bids = bidsData?.bids || [];
+
+    // Show error notification when query fails
+    React.useEffect(() => {
+        if (auctionError) {
             notification.error({
                 message: 'Failed to Load Auction',
-                description: error.response?.data?.message || 'Unable to fetch auction details. Please try again.',
+                description: (auctionError as any).response?.data?.message || 'Unable to fetch auction details. Please try again.',
             });
-            setAuction(null);
-        } finally {
-            setLoading(false);
         }
-    }, [id]);
-
-    // Initial fetch on mount
-    useEffect(() => {
-        fetchAuction();
-    }, [fetchAuction]);
+    }, [auctionError]);
 
     // WebSocket integration
     useEffect(() => {
@@ -81,7 +80,9 @@ export const AuctionDetail: React.FC = () => {
             setSocketConnected(true);
             // Re-join on reconnect
             socket.emit('join', `auction:${id}`);
-            fetchAuction();
+            // Invalidate queries to refetch latest data
+            queryClient.invalidateQueries({ queryKey: ['auction', id] });
+            queryClient.invalidateQueries({ queryKey: ['auction-bids', id] });
         };
 
         const handleDisconnect = () => {
@@ -93,7 +94,9 @@ export const AuctionDetail: React.FC = () => {
         const handleNewBid = (event: NewBidEvent) => {
             // console.log('Socket event received: NEW_BID', event);
             if (String(event.auctionId) === String(id)) {
-                fetchAuction();
+                // Invalidate queries to refetch latest data
+                queryClient.invalidateQueries({ queryKey: ['auction', id] });
+                queryClient.invalidateQueries({ queryKey: ['auction-bids', id] });
             } else {
                 console.warn(`Event ID mismatch: received ${event.auctionId}, expected ${id}`);
             }
@@ -110,11 +113,17 @@ export const AuctionDetail: React.FC = () => {
         };
 
         const handleAuctionSold = (event: AuctionSoldEvent) => {
-            if (String(event.auctionId) === String(id)) fetchAuction();
+            if (String(event.auctionId) === String(id)) {
+                queryClient.invalidateQueries({ queryKey: ['auction', id] });
+                queryClient.invalidateQueries({ queryKey: ['auction-bids', id] });
+            }
         };
 
         const handleAuctionExpired = (event: AuctionExpiredEvent) => {
-            if (String(event.auctionId) === String(id)) fetchAuction();
+            if (String(event.auctionId) === String(id)) {
+                queryClient.invalidateQueries({ queryKey: ['auction', id] });
+                queryClient.invalidateQueries({ queryKey: ['auction-bids', id] });
+            }
         };
 
         // Attach listeners
@@ -150,7 +159,7 @@ export const AuctionDetail: React.FC = () => {
             console.log('🔌 Socket leaving room:', `auction:${id}`);
             socket.emit('leave', `auction:${id}`);
         };
-    }, [id, fetchAuction]);
+    }, [id, auction, queryClient]);
 
     if (loading) {
         return (
@@ -263,7 +272,6 @@ export const AuctionDetail: React.FC = () => {
                         auctionId={auction.id}
                         currentPrice={auction.currentPrice}
                         minIncrement={auction.minimumBidIncrement}
-                        onBidSuccess={fetchAuction}
                     />
                 )}
 

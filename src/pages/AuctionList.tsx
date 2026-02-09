@@ -1,45 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Table, Select, Typography, Tag, notification, Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { auctionsApi } from '../api/auctions.api';
-import type { Auction } from '../types/auction';
+
 
 const { Title } = Typography;
 const { Option } = Select;
 
 export const AuctionList: React.FC = () => {
-    const [auctions, setAuctions] = useState<Auction[]>([]);
-    const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
-    const [total, setTotal] = useState(0);
     const [status, setStatus] = useState<string>('');
     const navigate = useNavigate();
     const pageSize = 10;
 
-    useEffect(() => {
-        fetchAuctions();
-    }, [page, status]);
-
-    const fetchAuctions = async () => {
-        setLoading(true);
-        try {
+    // Use TanStack Query for data fetching and caching
+    const { data, isLoading, error } = useQuery({
+        queryKey: ['auctions', { page, status }],
+        queryFn: () => {
             const params: any = { page, limit: pageSize };
             if (status) params.status = status;
+            return auctionsApi.getAuctions(params);
+        },
+    });
 
-            const response = await auctionsApi.getAuctions(params);
-            setAuctions(response.items);
-            setTotal(response.pagination.total);
-        } catch (error: any) {
+    // Show error notification when query fails
+    React.useEffect(() => {
+        if (error) {
             notification.error({
                 message: 'Failed to Load Auctions',
-                description: error.response?.data?.message || 'Unable to fetch auctions. Please try again.',
+                description: (error as any).response?.data?.message || 'Unable to fetch auctions. Please try again.',
             });
-            setAuctions([]);
-            setTotal(0);
-        } finally {
-            setLoading(false);
         }
-    };
+    }, [error]);
+
+    const auctions = data?.items || [];
+    const total = data?.pagination?.total || 0;
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -126,7 +122,7 @@ export const AuctionList: React.FC = () => {
                 columns={columns}
                 dataSource={auctions}
                 rowKey="id"
-                loading={loading}
+                loading={isLoading}
                 pagination={{
                     current: page,
                     pageSize: pageSize,

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Form, Input, InputNumber, DatePicker, Button, Card, Typography, Space, notification } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { auctionsApi } from '../api/auctions.api';
 import type { CreateAuctionRequest } from '../types/auction';
@@ -11,36 +12,41 @@ const { TextArea } = Input;
 
 export const CreateAuction: React.FC = () => {
     const navigate = useNavigate();
-    const [loading, setLoading] = useState(false);
+    const queryClient = useQueryClient();
     const [form] = Form.useForm();
 
-    const onFinish = async (values: any) => {
-        setLoading(true);
-        try {
-            const auctionData: CreateAuctionRequest = {
-                title: values.title,
-                description: values.description,
-                startingPrice: values.startingPrice,
-                // minimumBidIncrement: values.minimumBidIncrement,
-                endsAt: values.endsAt.toISOString(),
-            };
-
-            const newAuction = await auctionsApi.createAuction(auctionData);
-
+    // Use TanStack Query mutation for creating auctions
+    const mutation = useMutation({
+        mutationFn: (auctionData: CreateAuctionRequest) => auctionsApi.createAuction(auctionData),
+        onSuccess: (newAuction) => {
             notification.success({
                 message: 'Auction Created',
                 description: 'Your auction has been successfully listed.',
             });
 
+            // Invalidate auctions query to refresh the list
+            queryClient.invalidateQueries({ queryKey: ['auctions'] });
+
             navigate(`/auctions/${newAuction.id}`);
-        } catch (error: any) {
+        },
+        onError: (error: any) => {
             notification.error({
                 message: 'Failed to Create Auction',
                 description: error.response?.data?.message || 'Please check your inputs and try again.',
             });
-        } finally {
-            setLoading(false);
-        }
+        },
+    });
+
+    const onFinish = (values: any) => {
+        const auctionData: CreateAuctionRequest = {
+            title: values.title,
+            description: values.description,
+            startingPrice: values.startingPrice,
+            // minimumBidIncrement: values.minimumBidIncrement,
+            endsAt: values.endsAt.toISOString(),
+        };
+
+        mutation.mutate(auctionData);
     };
 
     const disabledDate = (current: dayjs.Dayjs) => {
@@ -138,7 +144,7 @@ export const CreateAuction: React.FC = () => {
                     </Form.Item>
 
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" size="large" block loading={loading}>
+                        <Button type="primary" htmlType="submit" size="large" block loading={mutation.isPending}>
                             Create Auction
                         </Button>
                     </Form.Item>

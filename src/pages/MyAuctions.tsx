@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Tabs, Table, Tag, Typography, Button, notification, Empty } from 'antd';
+import React, { useState } from 'react';
+import { Tabs, Table, Tag, Typography, Button, Empty } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext';
 import { auctionsApi } from '../api/auctions.api';
 import type { Auction } from '../types/auction';
@@ -11,30 +12,15 @@ export const MyAuctions: React.FC = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('listings');
-    const [auctions, setAuctions] = useState<Auction[]>([]);
-    const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        if (user && activeTab === 'listings') {
-            fetchMyListings();
-        } else {
-            // Placeholder for bids or clear
-            setAuctions([]);
-        }
-    }, [user, activeTab]);
+    // Use TanStack Query for fetching user listings
+    const { data: listings, isLoading } = useQuery({
+        queryKey: ['my-auctions', { userId: user?.id, type: 'listings' }],
+        queryFn: () => auctionsApi.getAuctions({ sellerId: user?.id, limit: 100 }),
+        enabled: !!user && activeTab === 'listings',
+    });
 
-    const fetchMyListings = async () => {
-        if (!user) return;
-        setLoading(true);
-        try {
-            const response = await auctionsApi.getAuctions({ sellerId: user.id, limit: 100 });
-            setAuctions(response.items);
-        } catch (error) {
-            notification.error({ message: 'Failed to fetch your auctions' });
-        } finally {
-            setLoading(false);
-        }
-    };
+    const auctions = listings?.items || [];
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -86,7 +72,7 @@ export const MyAuctions: React.FC = () => {
                     columns={columns}
                     dataSource={auctions}
                     rowKey="id"
-                    loading={loading}
+                    loading={isLoading}
                     pagination={{ pageSize: 10 }}
                 />
             ),

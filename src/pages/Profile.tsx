@@ -1,34 +1,51 @@
 import React, { useState } from 'react';
 import { Card, Typography, Button, Statistic, Row, Col, Modal, InputNumber, notification } from 'antd';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext';
+import { authApi } from '../api/auth.api';
 import { UserOutlined, WalletOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 
 export const Profile: React.FC = () => {
-    const { user, setUser } = useAuth(); // Assuming setUser is available or we need to refetch
-    // actually setUser might handle local state update, but backend update is better.
-    // implementing mock funds for now.
+    const { user: authUser, setUser } = useAuth();
+    const queryClient = useQueryClient();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [addAmount, setAddAmount] = useState<number | null>(100);
 
+    // Use TanStack Query for fetching user profile
+    const { data: user } = useQuery({
+        queryKey: ['profile'],
+        queryFn: () => authApi.getProfile(),
+        initialData: authUser || undefined,
+    });
+
+    // Mock funds mutation
+    const addFundsMutation = useMutation({
+        mutationFn: async (amount: number) => {
+            // MOCK: In real app: Calls API POST /wallet/deposit
+            return { balance: (parseFloat(user?.balance || '0') + amount).toFixed(2) };
+        },
+        onSuccess: (data) => {
+            notification.success({
+                message: 'Funds Added',
+                description: `Successfully added $${addAmount} to your wallet. (Mock)`,
+            });
+
+            // Update local context user
+            if (authUser) {
+                setUser({ ...authUser, balance: data.balance });
+            }
+
+            // Invalidate query to refetch
+            queryClient.invalidateQueries({ queryKey: ['profile'] });
+            setIsModalOpen(false);
+        },
+    });
+
     const handleAddFunds = () => {
         if (!addAmount || !user) return;
-
-        // MOCK: Update local balance visualization
-        // In real app: Calls API POST /wallet/deposit
-        const newBalance = parseFloat(user.balance) + addAmount;
-
-        notification.success({
-            message: 'Funds Added',
-            description: `Successfully added $${addAmount} to your wallet. (Mock)`,
-        });
-
-        // Assuming we can't easily update context user without reload or method, 
-        // we might just show success. 
-        // But let's try to verify if we have refreshUser?
-        // For now, close modal.
-        setIsModalOpen(false);
+        addFundsMutation.mutate(addAmount);
     };
 
     if (!user) return null;
