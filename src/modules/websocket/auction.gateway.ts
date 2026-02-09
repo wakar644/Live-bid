@@ -99,9 +99,25 @@ export class AuctionGateway implements OnGatewayConnection, OnGatewayDisconnect 
     @SubscribeMessage('join_auction')
     async handleJoinAuction(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { auctionId: string },
+        @MessageBody() data: { auctionId: string } | string,
     ) {
-        const { auctionId } = data;
+        let auctionId: string;
+
+        if (typeof data === 'string') {
+            auctionId = data;
+        } else if (data && typeof data === 'object' && 'auctionId' in data) {
+            auctionId = data.auctionId;
+        } else {
+            this.logger.error(`Invalid join_auction payload from ${client.id}: ${JSON.stringify(data)}`);
+            client.emit(WsEvents.ERROR, { message: 'Invalid payload. Expected { auctionId: string } or string' });
+            return;
+        }
+
+        if (!auctionId) {
+            this.logger.error(`Received empty auctionId from ${client.id}`);
+            return;
+        }
+
         const room = `auction:${auctionId}`;
 
         // Leave all other auction rooms first
@@ -120,15 +136,18 @@ export class AuctionGateway implements OnGatewayConnection, OnGatewayDisconnect 
         await this.incrementViewerCount(auctionId);
         await this.broadcastViewerCount(auctionId);
 
+        this.logger.log(`Client ${client.id} joined room ${room} (Auction ID: ${auctionId})`);
+
         // Send current auction state on join
         try {
             const auction = await this.auctionsService.findOne(auctionId);
             client.emit(WsEvents.AUCTION_STATE, auction);
+            this.logger.log(`Sent initial state for auction ${auctionId} to client ${client.id}`);
         } catch (error) {
+            this.logger.warn(`Auction ${auctionId} not found for client ${client.id}`);
             client.emit(WsEvents.ERROR, { message: 'Auction not found' });
         }
 
-        this.logger.log(`Client ${client.id} joined room ${room}`);
         return { success: true, room };
     }
 

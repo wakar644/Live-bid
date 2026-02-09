@@ -8,13 +8,13 @@
  *   npx ts-node test/test-concurrency.ts
  * 
  * Prerequisites:
- *   - API server running on http://localhost:3000
+ *   - API server running on http://localhost:8080
  *   - PostgreSQL and Redis running
  */
 
 import Decimal from 'decimal.js';
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_BASE = process.env.API_BASE || 'http://localhost:8080';
 const NUM_USERS = 50;
 const STARTING_BALANCE = '1000.00';
 const STARTING_PRICE = 100;
