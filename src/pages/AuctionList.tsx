@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Select, Typography, Tag, notification } from 'antd';
+import { Table, Select, Typography, Tag, notification, Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { auctionsApi } from '../api/auctions.api';
 import type { Auction } from '../types/auction';
@@ -27,8 +27,8 @@ export const AuctionList: React.FC = () => {
             if (status) params.status = status;
 
             const response = await auctionsApi.getAuctions(params);
-            setAuctions(response.auctions);
-            setTotal(response.total);
+            setAuctions(response.items);
+            setTotal(response.pagination.total);
         } catch (error: any) {
             notification.error({
                 message: 'Failed to Load Auctions',
@@ -56,7 +56,7 @@ export const AuctionList: React.FC = () => {
         }
     };
 
-    const formatPrice = (price: number) => `$${price.toFixed(2)}`;
+    const formatPrice = (price: number) => `$${Number(price).toFixed(2)}`;
 
     const formatDateTime = (dateString: string) => {
         const date = new Date(dateString);
@@ -82,9 +82,9 @@ export const AuctionList: React.FC = () => {
         },
         {
             title: 'Ends At',
-            dataIndex: 'endTime',
-            key: 'endTime',
-            render: (endTime: string) => formatDateTime(endTime),
+            dataIndex: 'endsAt',
+            key: 'endsAt',
+            render: (endsAt: string) => formatDateTime(endsAt),
         },
         {
             title: 'Status',
@@ -100,21 +100,26 @@ export const AuctionList: React.FC = () => {
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                 <Title level={2}>Auctions</Title>
-                <Select
-                    placeholder="Filter by status"
-                    style={{ width: 200 }}
-                    allowClear
-                    value={status || undefined}
-                    onChange={(value) => {
-                        setStatus(value || '');
-                        setPage(1);
-                    }}
-                >
-                    <Option value="pending">Pending</Option>
-                    <Option value="active">Active</Option>
-                    <Option value="sold">Sold</Option>
-                    <Option value="expired">Expired</Option>
-                </Select>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                    <Button type="primary" onClick={() => navigate('/auctions/create')}>
+                        Create Auction
+                    </Button>
+                    <Select
+                        placeholder="Filter by status"
+                        style={{ width: 200 }}
+                        allowClear
+                        value={status || undefined}
+                        onChange={(value) => {
+                            setStatus(value || '');
+                            setPage(1);
+                        }}
+                    >
+                        <Option value="pending">Pending</Option>
+                        <Option value="active">Active</Option>
+                        <Option value="sold">Sold</Option>
+                        <Option value="expired">Expired</Option>
+                    </Select>
+                </div>
             </div>
 
             <Table

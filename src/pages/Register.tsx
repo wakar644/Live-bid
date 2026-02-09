@@ -11,10 +11,10 @@ export const Register: React.FC = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
 
-    const onFinish = async (values: { email: string; username: string; password: string }) => {
+    const onFinish = async (values: { email: string; password: string }) => {
         setLoading(true);
         try {
-            await register(values);
+            await register({ email: values.email, password: values.password });
             navigate('/');
         } catch (error) {
             // Error handled in AuthContext
@@ -29,7 +29,12 @@ export const Register: React.FC = () => {
                 <Title level={2} style={{ textAlign: 'center', marginBottom: 24 }}>
                     Create Account
                 </Title>
-                <Form name="register" onFinish={onFinish} size="large">
+                <Form
+                    name="register"
+                    onFinish={onFinish}
+                    onFinishFailed={() => { }}
+                    size="large"
+                >
                     <Form.Item
                         name="email"
                         rules={[
@@ -39,17 +44,6 @@ export const Register: React.FC = () => {
                     >
                         <Input prefix={<MailOutlined />} placeholder="Email" />
                     </Form.Item>
-
-                    <Form.Item
-                        name="username"
-                        rules={[
-                            { required: true, message: 'Please input your username!' },
-                            { min: 3, message: 'Username must be at least 3 characters!' },
-                        ]}
-                    >
-                        <Input prefix={<UserOutlined />} placeholder="Username" />
-                    </Form.Item>
-
                     <Form.Item
                         name="password"
                         rules={[

@@ -7,6 +7,9 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { AuctionList } from './pages/AuctionList';
 import { AuctionDetail } from './pages/AuctionDetail';
+import { CreateAuction } from './pages/CreateAuction';
+import { MyAuctions } from './pages/MyAuctions';
+import { Profile } from './pages/Profile';
 
 const App: React.FC = () => {
   return (
@@ -26,7 +29,10 @@ const App: React.FC = () => {
           >
             <Route index element={<Navigate to="/auctions" replace />} />
             <Route path="auctions" element={<AuctionList />} />
+            <Route path="auctions/create" element={<CreateAuction />} />
             <Route path="auctions/:id" element={<AuctionDetail />} />
+            <Route path="my-auctions" element={<MyAuctions />} />
+            <Route path="profile" element={<Profile />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

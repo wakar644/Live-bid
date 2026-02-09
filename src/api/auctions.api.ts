@@ -1,11 +1,12 @@
 import apiClient from './axios';
-import type { Auction, AuctionListResponse, PlaceBidRequest, PlaceBidResponse } from '../types/auction';
+import type { Auction, AuctionListResponse, PlaceBidRequest, PlaceBidResponse, CreateAuctionRequest } from '../types/auction';
 
 export const auctionsApi = {
     getAuctions: async (params?: {
         page?: number;
         limit?: number;
         status?: string;
+        sellerId?: string;
     }): Promise<AuctionListResponse> => {
         const response = await apiClient.get<AuctionListResponse>('/auctions', { params });
         return response.data;
@@ -23,9 +24,14 @@ export const auctionsApi = {
 
     placeBid: async (auctionId: string, data: PlaceBidRequest): Promise<PlaceBidResponse> => {
         const response = await apiClient.post<PlaceBidResponse>(
-            `/auctions/${auctionId}/bids`,
+            `/auctions/${auctionId}/bid`,
             data
         );
+        return response.data;
+    },
+
+    createAuction: async (data: CreateAuctionRequest): Promise<Auction> => {
+        const response = await apiClient.post<Auction>('/auctions', data);
         return response.data;
     },
 };

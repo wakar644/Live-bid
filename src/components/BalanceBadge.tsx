@@ -10,7 +10,7 @@ export const BalanceBadge: React.FC = () => {
 
     return (
         <Badge
-            count={`$${user.balance.toFixed(2)}`}
+            count={`$${Number(user.balance).toFixed(2)}`}
             style={{
                 backgroundColor: '#52c41a',
                 fontSize: '14px',

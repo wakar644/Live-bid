@@ -10,24 +10,31 @@ export interface Auction {
     id: string;
     title: string;
     description: string;
-    startPrice: number;
+    startingPrice: number;
     currentPrice: number;
     minimumBidIncrement: number;
-    startTime: string;
-    endTime: string;
+    createdAt: string;
+    endsAt: string;
     status: 'pending' | 'active' | 'sold' | 'expired';
     sellerId: string;
     highestBidderId?: string;
     highestBidderUsername?: string;
     bids?: Bid[];
+    creator: {
+        id: string;
+        email: string;
+    }
     viewerCount?: number;
 }
 
 export interface AuctionListResponse {
-    auctions: Auction[];
-    total: number;
-    page: number;
-    limit: number;
+    items: Auction[];
+    pagination: {
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+    }
 }
 
 export interface PlaceBidRequest {
@@ -37,4 +44,12 @@ export interface PlaceBidRequest {
 export interface PlaceBidResponse {
     bid: Bid;
     auction: Auction;
+}
+
+export interface CreateAuctionRequest {
+    title: string;
+    description: string;
+    startingPrice: number;
+    // minimumBidIncrement: number;
+    endsAt: string;
 }

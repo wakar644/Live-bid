@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Descriptions, Tag, List, Typography, Spin, Button, Space, Alert, notification } from 'antd';
 import { EyeOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { useAuth } from '../auth/AuthContext';
 import { BidForm } from '../components/BidForm';
 import { auctionsApi } from '../api/auctions.api';
 import { getSocket } from '../sockets/socket';
@@ -19,11 +20,13 @@ const { Title, Text } = Typography;
 export const AuctionDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [auction, setAuction] = useState<Auction | null>(null);
     const [bids, setBids] = useState<Bid[]>([]);
     const [loading, setLoading] = useState(true);
     const [viewerCount, setViewerCount] = useState(0);
     const [isEndingSoon, setIsEndingSoon] = useState(false);
+    const [socketConnected, setSocketConnected] = useState(false);
 
     // Fetch auction details and bids
     const fetchAuction = useCallback(async () => {
@@ -57,71 +60,97 @@ export const AuctionDetail: React.FC = () => {
         if (!id || !auction) return;
 
         const socket = getSocket();
-        if (!socket) return;
+        if (!socket) {
+            console.warn('Socket not initialized despite user being logged in');
+            return;
+        }
 
-        // Join auction room
+        // Initialize connection state immediately
+        setSocketConnected(socket.connected);
+
+        console.log('🔌 Socket joining room:', `auction:${id}`);
         socket.emit('join', `auction:${id}`);
 
-        // Handle NEW_BID event - re-fetch auction state
-        const handleNewBid = (event: NewBidEvent) => {
-            if (event.auctionId === id) {
-                fetchAuction();
-            }
-        };
+        // DEBUG: Listen to ALL events to see what's coming in
+        socket.onAny((eventName, ...args) => {
+            console.log(`📡 Received event '${eventName}':`, args);
+        });
 
-        // Handle VIEWER_COUNT event - update count only
-        const handleViewerCount = (event: ViewerCountEvent) => {
-            if (event.auctionId === id) {
-                setViewerCount(event.count);
-            }
-        };
-
-        // Handle AUCTION_ENDING_SOON event - show warning
-        const handleEndingSoon = (event: AuctionEndingSoonEvent) => {
-            if (event.auctionId === id) {
-                setIsEndingSoon(true);
-            }
-        };
-
-        // Handle AUCTION_SOLD event - re-fetch to get final state
-        const handleAuctionSold = (event: AuctionSoldEvent) => {
-            if (event.auctionId === id) {
-                fetchAuction();
-            }
-        };
-
-        // Handle AUCTION_EXPIRED event - re-fetch to get final state
-        const handleAuctionExpired = (event: AuctionExpiredEvent) => {
-            if (event.auctionId === id) {
-                fetchAuction();
-            }
-        };
-
-        // Handle reconnect - re-fetch auction state
-        const handleReconnect = () => {
+        const handleConnect = () => {
+            console.log('✅ Socket connected (in component)');
+            setSocketConnected(true);
+            // Re-join on reconnect
             socket.emit('join', `auction:${id}`);
             fetchAuction();
         };
 
-        // Attach event listeners
+        const handleDisconnect = () => {
+            console.log('❌ Socket disconnected (in component)');
+            setSocketConnected(false);
+        };
+
+        // Handle NEW_BID event
+        const handleNewBid = (event: NewBidEvent) => {
+            // console.log('Socket event received: NEW_BID', event);
+            if (String(event.auctionId) === String(id)) {
+                fetchAuction();
+            } else {
+                console.warn(`Event ID mismatch: received ${event.auctionId}, expected ${id}`);
+            }
+        };
+
+        const handleViewerCount = (event: ViewerCountEvent) => {
+            if (String(event.auctionId) === String(id)) {
+                setViewerCount(event.count);
+            }
+        };
+
+        const handleEndingSoon = (event: AuctionEndingSoonEvent) => {
+            if (String(event.auctionId) === String(id)) setIsEndingSoon(true);
+        };
+
+        const handleAuctionSold = (event: AuctionSoldEvent) => {
+            if (String(event.auctionId) === String(id)) fetchAuction();
+        };
+
+        const handleAuctionExpired = (event: AuctionExpiredEvent) => {
+            if (String(event.auctionId) === String(id)) fetchAuction();
+        };
+
+        // Attach listeners
+        socket.on('connect', handleConnect);
+        socket.on('disconnect', handleDisconnect);
+
         socket.on('NEW_BID', handleNewBid);
+        socket.on('newBid', handleNewBid);
+        socket.on('new_bid', handleNewBid);
+
         socket.on('VIEWER_COUNT', handleViewerCount);
+        socket.on('viewerCount', handleViewerCount); // Add CamelCase variant
+        socket.on('viewer_count', handleViewerCount); // Add snake_case variant
+
         socket.on('AUCTION_ENDING_SOON', handleEndingSoon);
         socket.on('AUCTION_SOLD', handleAuctionSold);
         socket.on('AUCTION_EXPIRED', handleAuctionExpired);
-        socket.on('connect', handleReconnect);
 
-        // Cleanup: remove listeners and leave room
         return () => {
+            socket.offAny(); // Remove debug listener
+            socket.off('connect', handleConnect);
+            socket.off('disconnect', handleDisconnect);
             socket.off('NEW_BID', handleNewBid);
+            socket.off('newBid', handleNewBid);
+            socket.off('new_bid', handleNewBid);
             socket.off('VIEWER_COUNT', handleViewerCount);
+            socket.off('viewerCount', handleViewerCount);
+            socket.off('viewer_count', handleViewerCount);
             socket.off('AUCTION_ENDING_SOON', handleEndingSoon);
             socket.off('AUCTION_SOLD', handleAuctionSold);
             socket.off('AUCTION_EXPIRED', handleAuctionExpired);
-            socket.off('connect', handleReconnect);
+
+            console.log('🔌 Socket leaving room:', `auction:${id}`);
             socket.emit('leave', `auction:${id}`);
         };
-    }, [id, auction, fetchAuction]);
+    }, [id, fetchAuction]);
 
     if (loading) {
         return (
@@ -164,7 +193,7 @@ export const AuctionDetail: React.FC = () => {
         }
     };
 
-    const formatPrice = (price: number) => `$${price.toFixed(2)}`;
+    const formatPrice = (price: number) => `$${Number(price).toFixed(2)}`;
 
     const formatDateTime = (dateString: string) => {
         const date = new Date(dateString);
@@ -203,6 +232,9 @@ export const AuctionDetail: React.FC = () => {
                 }
                 extra={
                     <Space>
+                        <Tag color={socketConnected ? 'success' : 'error'}>
+                            {socketConnected ? 'LIVE' : 'OFFLINE'}
+                        </Tag>
                         <EyeOutlined />
                         <Text>{viewerCount} viewers</Text>
                     </Space>
@@ -211,7 +243,7 @@ export const AuctionDetail: React.FC = () => {
                 <Descriptions bordered column={1}>
                     <Descriptions.Item label="Description">{auction.description}</Descriptions.Item>
                     <Descriptions.Item label="Starting Price">
-                        {formatPrice(auction.startPrice)}
+                        {formatPrice(auction.startingPrice)}
                     </Descriptions.Item>
                     <Descriptions.Item label="Current Price">
                         <Text strong style={{ fontSize: 18, color: '#1890ff' }}>
@@ -219,19 +251,28 @@ export const AuctionDetail: React.FC = () => {
                         </Text>
                     </Descriptions.Item>
                     <Descriptions.Item label="Start Time">
-                        {formatDateTime(auction.startTime)}
+                        {formatDateTime(auction.createdAt)}
                     </Descriptions.Item>
                     <Descriptions.Item label="End Time">
-                        {formatDateTime(auction.endTime)}
+                        {formatDateTime(auction.endsAt)}
                     </Descriptions.Item>
                 </Descriptions>
 
-                {!isBiddingDisabled && auction.status === 'active' && (
+                {!isBiddingDisabled && auction.status === 'active' && user?.id !== auction.creator.id && (
                     <BidForm
                         auctionId={auction.id}
                         currentPrice={auction.currentPrice}
                         minIncrement={auction.minimumBidIncrement}
                         onBidSuccess={fetchAuction}
+                    />
+                )}
+
+                {user?.id === auction.creator.id && auction.status === 'active' && (
+                    <Alert
+                        message="You cannot bid on your own auction"
+                        type="info"
+                        showIcon
+                        style={{ marginTop: 16 }}
                     />
                 )}
 
@@ -262,7 +303,7 @@ export const AuctionDetail: React.FC = () => {
                                     title={
                                         <Space>
                                             <Text strong>{formatPrice(bid.amount)}</Text>
-                                            <Text type="secondary">by {bid.userId}</Text>
+                                            <Text type="secondary">by {bid.id}</Text>
                                         </Space>
                                     }
                                     description={formatDateTime(bid.createdAt)}

@@ -17,6 +17,26 @@ export const connectSocket = (token: string): Socket => {
             token,
         },
         autoConnect: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+    });
+
+    socket.on('connect', () => {
+        console.log('✅ Socket connected successfully:', socket?.id);
+    });
+
+    socket.on('connect_error', (err) => {
+        console.error('❌ Socket connection error:', err.message);
+        // Common errors: "xhr poll error" (CORS/Network), "invalid token" (Auth)
+    });
+
+    socket.on('disconnect', (reason) => {
+        console.warn('⚠️ Socket disconnected:', reason);
+    });
+
+    socket.on('reconnect_attempt', (attempt) => {
+        console.log(`🔄 Socket reconnecting... (Attempt ${attempt})`);
     });
 
     return socket;

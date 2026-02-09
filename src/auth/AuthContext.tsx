@@ -11,6 +11,7 @@ interface AuthContextType {
     register: (data: RegisterRequest) => Promise<void>;
     logout: () => Promise<void>;
     refreshUser: () => Promise<void>;
+    setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,18 +44,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const loadUser = async () => {
         try {
+            console.log('Loading user profile...');
             const userData = await authApi.getProfile();
+            console.log('User profile loaded:', userData);
             setUser(userData);
             const token = localStorage.getItem('token');
             if (token) {
+                console.log('Connecting socket...');
                 connectSocket(token);
             }
-        } catch (error) {
-            localStorage.removeItem('token');
-            notification.error({
-                message: 'Session Expired',
-                description: 'Please log in again.',
-            });
+        } catch (error: any) {
+            console.error('Failed to load user:', error);
+            // Only clear session on authentication errors (401)
+            if (error.response?.status === 401) {
+                localStorage.removeItem('token');
+                notification.error({
+                    message: 'Session Expired',
+                    description: 'Please log in again.',
+                });
+            }
+            // Keep token for other errors (network issues, server errors, etc.)
         } finally {
             setLoading(false);
         }
@@ -62,19 +71,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const login = async (credentials: LoginRequest) => {
         try {
-            // const response = await authApi.login(credentials);
-            const response = {
-                token: "213468277576576287878",
-                user: {
-                    id: "1",
-                    username: "test",
-                    email: "hi@test.com",
-                    balance: 1.00
-                }
-            }
-            localStorage.setItem('token', response.token);
+            const response = await authApi.login(credentials);
+            localStorage.setItem('token', response.accessToken);
             setUser(response.user);
-            connectSocket(response.token);
+            connectSocket(response.accessToken);
             notification.success({
                 message: 'Login Successful',
                 description: `Welcome back, ${response.user.username}!`,
@@ -91,9 +91,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const register = async (data: RegisterRequest) => {
         try {
             const response = await authApi.register(data);
-            localStorage.setItem('token', response.token);
+            localStorage.setItem('token', response.accessToken);
             setUser(response.user);
-            connectSocket(response.token);
+            connectSocket(response.accessToken);
             notification.success({
                 message: 'Registration Successful',
                 description: `Welcome, ${response.user.username}!`,
@@ -133,7 +133,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+        <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser, setUser }}>
             {children}
         </AuthContext.Provider>
     );

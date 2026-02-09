@@ -26,9 +26,10 @@ apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Token expired or invalid - logout and redirect
+            // Token expired or invalid - logout
             localStorage.removeItem('token');
-            window.location.href = '/login';
+            // Don't force reload/redirect here, let the app state handle it
+            // window.location.href = '/login';
         }
         return Promise.reject(error);
     }

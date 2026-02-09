@@ -29,7 +29,12 @@ export const Login: React.FC = () => {
                 <Title level={2} style={{ textAlign: 'center', marginBottom: 24 }}>
                     LiveBid Login
                 </Title>
-                <Form name="login" onFinish={onFinish} size="large">
+                <Form
+                    name="login"
+                    onFinish={onFinish}
+                    onSubmitCapture={(e) => e.preventDefault()}
+                    size="large"
+                >
                     <Form.Item
                         name="email"
                         rules={[

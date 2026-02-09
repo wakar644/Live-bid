@@ -22,7 +22,7 @@ export const BidForm: React.FC<BidFormProps> = ({
     const [loading, setLoading] = useState(false);
     const { refreshUser } = useAuth();
 
-    const minBidAmount = currentPrice + minIncrement;
+    const minBidAmount = Number(currentPrice) + Number(minIncrement);
 
     const onFinish = async (values: { amount: number }) => {
         setLoading(true);

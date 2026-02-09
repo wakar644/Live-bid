@@ -33,12 +33,19 @@ export const AppLayout: React.FC = () => {
                                 label: 'Auctions',
                                 onClick: () => navigate('/auctions'),
                             },
+                            {
+                                key: '/my-auctions',
+                                label: 'My Auctions',
+                                onClick: () => navigate('/my-auctions'),
+                            },
                         ]}
                     />
                 </div>
                 <Space size="large">
                     <BalanceBadge />
-                    <span style={{ color: '#fff' }}>{user?.username}</span>
+                    <Button type="text" onClick={() => navigate('/profile')} style={{ color: '#fff' }}>
+                        {user?.username}
+                    </Button>
                     <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout} style={{ color: '#fff' }}>
                         Logout
                     </Button>
