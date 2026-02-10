@@ -68,18 +68,19 @@ export class AuctionsService {
         const { status, page = 1, limit = 20 } = query;
         const skip = (page - 1) * limit;
 
-        const where: FindOptionsWhere<AuctionItem> = {};
+        const queryBuilder = this.auctionRepository
+            .createQueryBuilder('auction')
+            .leftJoinAndSelect('auction.creator', 'creator')
+            .loadRelationCountAndMap('auction.bidCount', 'auction.bids')
+            .orderBy('auction.createdAt', 'DESC')
+            .skip(skip)
+            .take(limit);
+
         if (status) {
-            where.status = status;
+            queryBuilder.where('auction.status = :status', { status });
         }
 
-        const [items, total] = await this.auctionRepository.findAndCount({
-            where,
-            order: { createdAt: 'DESC' },
-            skip,
-            take: limit,
-            relations: ['creator'],
-        });
+        const [items, total] = await queryBuilder.getManyAndCount();
 
         return {
             items: items.map((item) => ({
@@ -89,6 +90,7 @@ export class AuctionsService {
                 status: item.status,
                 endsAt: item.endsAt,
                 createdAt: item.createdAt,
+                bidCount: (item as any).bidCount || 0,
                 creator: item.creator ? { id: item.creator.id, email: item.creator.email } : null,
             })),
             pagination: {
@@ -149,6 +151,7 @@ export class AuctionsService {
         dto: PlaceBidDto,
     ): Promise<{ bid: Bid; auction: AuctionItem }> {
         const bidAmount = new Decimal(dto.amount).toFixed(2);
+        let outbidUserId: string | null = null;
 
         // Use transaction with pessimistic locking
         const result = await this.dataSource.transaction(async (manager) => {
@@ -203,9 +206,10 @@ export class AuctionsService {
             }
 
             // 7. Refund previous highest bidder (if exists)
-            if (auction.winnerId && auction.winnerId !== bidderId) {
+            outbidUserId = auction.winnerId;
+            if (outbidUserId && outbidUserId !== bidderId) {
                 const previousWinner = await manager.findOne(User, {
-                    where: { id: auction.winnerId },
+                    where: { id: outbidUserId },
                     lock: { mode: 'pessimistic_write' },
                 });
 
@@ -246,6 +250,10 @@ export class AuctionsService {
 
                 // Reschedule the settlement job
                 await this.jobsService.scheduleAuctionSettlement(auction.id, newEndsAt);
+
+                // Reschedule the ending reminder job
+                const reminderTime = new Date(newEndsAt.getTime() - 5 * 60 * 1000);
+                await this.jobsService.scheduleEndingReminder(auction.id, reminderTime);
             }
 
             await manager.save(AuctionItem, auction);
@@ -258,7 +266,7 @@ export class AuctionsService {
             });
             await manager.save(Bid, bid);
 
-            return { bid, auction };
+            return { bid, auction, bidderEmail: bidder.email };
         });
 
         // 12. Emit WebSocket events AFTER transaction commits
@@ -266,14 +274,18 @@ export class AuctionsService {
             bidId: result.bid.id,
             amount: result.bid.amount,
             bidderId: result.bid.bidderId,
+            bidderName: (result as any).bidderEmail, // Need to return email from transaction
             currentPrice: result.auction.currentPrice,
             endsAt: result.auction.endsAt,
         });
 
-        // Schedule outbid notification for previous winner
-        if (result.auction.winnerId !== bidderId) {
-            // This means there was a previous winner who was outbid
-            // The job was already scheduled implicitly through the transaction
+        // 13. Schedule outbid notification for previous winner
+        if (outbidUserId && outbidUserId !== bidderId) {
+            await this.jobsService.scheduleOutbidNotification(
+                auctionId,
+                outbidUserId,
+                result.bid.amount,
+            );
         }
 
         return result;
@@ -300,8 +312,28 @@ export class AuctionsService {
 
             if (auction.winnerId) {
                 auction.status = AuctionStatus.SOLD;
+
+                // Transfer funds to creator
+                const creator = await manager.findOne(User, {
+                    where: { id: auction.creatorId },
+                    lock: { mode: 'pessimistic_write' },
+                });
+
+                if (creator) {
+                    const newBalance = new Decimal(creator.balance)
+                        .plus(auction.currentPrice)
+                        .toFixed(2);
+                    await manager.update(User, creator.id, { balance: newBalance });
+                }
+
+                // Fetch winner for name
+                const winner = await manager.findOne(User, {
+                    where: { id: auction.winnerId },
+                });
+
                 this.auctionGateway.emitAuctionSold(auctionId, {
                     winnerId: auction.winnerId,
+                    winnerName: winner ? winner.email : 'Unknown',
                     finalPrice: auction.currentPrice,
                 });
             } else {
@@ -311,6 +343,24 @@ export class AuctionsService {
 
             await manager.save(AuctionItem, auction);
         });
+    }
+
+    async findWinners() {
+        const auctions = await this.auctionRepository.find({
+            where: { status: AuctionStatus.SOLD },
+            relations: ['winner'],
+            order: { endsAt: 'DESC' },
+        });
+
+        return auctions.map((auction) => ({
+            id: auction.id,
+            title: auction.title,
+            finalPrice: auction.currentPrice,
+            winner: auction.winner
+                ? { id: auction.winner.id, email: auction.winner.email }
+                : null,
+            endedAt: auction.endsAt,
+        }));
     }
 
     async findById(id: string): Promise<AuctionItem | null> {

@@ -419,7 +419,7 @@ npm run migration:run      # Run migrations
 npm run migration:revert   # Revert last migration
 
 # Testing
-npm run test               # Unit tests
+npm run test:concurrency               # Unit tests
 npm run test:e2e           # E2E tests
 npm run test:cov           # Coverage report
 ```

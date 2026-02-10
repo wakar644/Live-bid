@@ -1,12 +1,14 @@
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+    bufferLogs: true,
   });
+  app.useLogger(app.get(Logger));
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('app.port', 3000);
@@ -23,22 +25,31 @@ async function bootstrap() {
     exclude: ['health'],
   });
 
+  // Global validation pipe
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  }));
+
   // Graceful shutdown
   app.enableShutdownHooks();
 
+  const logger = app.get(Logger);
+
   await app.listen(port, "0.0.0.0");
-  Logger.log(`🚀 Application is running on: http://localhost:${port}`, 'Bootstrap');
-  Logger.log(`📊 Health check: http://localhost:${port}/health`, 'Bootstrap');
+  logger.log(`🚀 Application is running on: http://localhost:${port}`);
+  logger.log(`📊 Health check: http://localhost:${port}/health`);
 }
 
-// Handle unhandled rejections
+// Handle unhandled rejections and uncaught exceptions with console as fallback
+
 process.on('unhandledRejection', (reason, promise) => {
-  Logger.error(`Unhandled Rejection at: ${promise}, reason: ${reason}`, 'Process');
+  console.error(`Unhandled Rejection at: ${promise}, reason: ${reason}`);
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  Logger.error(`Uncaught Exception: ${error.message}`, error.stack, 'Process');
+  console.error(`Uncaught Exception: ${error.message}`);
   process.exit(1);
 });
 

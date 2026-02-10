@@ -1,9 +1,9 @@
 import { NestFactory } from '@nestjs/core';
-import { Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { LoggerModule, Logger } from 'nestjs-pino';
 import {
     databaseConfig,
     redisConfig,
@@ -23,6 +23,17 @@ import Redis from 'ioredis';
 // Simplified worker module that only includes what's needed for processing jobs
 @Module({
     imports: [
+        LoggerModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+                pinoHttp: {
+                    transport: config.get('app.nodeEnv') !== 'production'
+                        ? { target: 'pino-pretty', options: { colorize: true } }
+                        : undefined,
+                    level: config.get('app.nodeEnv') !== 'production' ? 'debug' : 'info',
+                },
+            }),
+        }),
         ConfigModule.forRoot({
             isGlobal: true,
             load: [databaseConfig, redisConfig, jwtConfig, appConfig],
@@ -99,9 +110,12 @@ import Redis from 'ioredis';
 class WorkerModule { }
 
 async function bootstrap() {
-    const app = await NestFactory.createApplicationContext(WorkerModule);
+    const app = await NestFactory.createApplicationContext(WorkerModule, {
+        bufferLogs: true,
+    });
+    app.useLogger(app.get(Logger));
 
-    const logger = new Logger('Worker');
+    const logger = app.get(Logger);
     logger.log('🔧 Worker process started');
 
     // Graceful shutdown
@@ -114,13 +128,13 @@ async function bootstrap() {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
 
-    // Keep worker running
+    // Handle process errors
     process.on('unhandledRejection', (reason, promise) => {
-        logger.error(`Unhandled Rejection at: ${promise}, reason: ${reason}`);
+        console.error(`Unhandled Rejection at: ${promise}, reason: ${reason}`);
     });
 
     process.on('uncaughtException', (error) => {
-        logger.error(`Uncaught Exception: ${error.message}`, error.stack);
+        console.error(`Uncaught Exception: ${error.message}`);
         process.exit(1);
     });
 }

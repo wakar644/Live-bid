@@ -28,7 +28,7 @@ export class AuthService {
         const user = this.userRepository.create({
             email: dto.email,
             passwordHash,
-            balance: '1000000.00', // Initial balance for testing
+            balance: '0.00', // Initial balance per logic document
         });
 
         await this.userRepository.save(user);

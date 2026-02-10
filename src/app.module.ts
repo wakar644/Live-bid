@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { Module, ValidationPipe } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_PIPE, APP_FILTER } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { LoggerModule } from 'nestjs-pino';
 import {
   databaseConfig,
   redisConfig,
@@ -22,6 +22,17 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 @Module({
   imports: [
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        pinoHttp: {
+          transport: config.get('app.nodeEnv') !== 'production'
+            ? { target: 'pino-pretty', options: { colorize: true } }
+            : undefined,
+          level: config.get('app.nodeEnv') !== 'production' ? 'debug' : 'info',
+        },
+      }),
+    }),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig, redisConfig, jwtConfig, appConfig],

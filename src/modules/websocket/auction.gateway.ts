@@ -29,12 +29,14 @@ interface BidEventPayload {
     bidId: string;
     amount: string;
     bidderId: string;
+    bidderName: string;
     currentPrice: string;
     endsAt: Date;
 }
 
 interface AuctionSoldPayload {
     winnerId: string;
+    winnerName: string;
     finalPrice: string;
 }
 
@@ -171,16 +173,24 @@ export class AuctionGateway implements OnGatewayConnection, OnGatewayDisconnect 
     emitNewBid(auctionId: string, payload: BidEventPayload) {
         const room = `auction:${auctionId}`;
         this.server.to(room).emit(WsEvents.NEW_BID, {
-            ...payload,
+            amount: payload.amount,
+            bidderName: payload.bidderName,
             timestamp: new Date().toISOString(),
+            // Bonus fields kept for UI convenience
+            bidId: payload.bidId,
+            bidderId: payload.bidderId,
+            currentPrice: payload.currentPrice,
+            endsAt: payload.endsAt,
         });
         this.logger.log(`Emitted NEW_BID to ${room}`);
     }
 
     emitAuctionEndingSoon(auctionId: string, endsAt: Date) {
         const room = `auction:${auctionId}`;
+        const secondsRemaining = Math.max(0, Math.floor((endsAt.getTime() - Date.now()) / 1000));
         this.server.to(room).emit(WsEvents.AUCTION_ENDING_SOON, {
             auctionId,
+            secondsRemaining,
             endsAt,
             timestamp: new Date().toISOString(),
         });
@@ -191,7 +201,9 @@ export class AuctionGateway implements OnGatewayConnection, OnGatewayDisconnect 
         const room = `auction:${auctionId}`;
         this.server.to(room).emit(WsEvents.AUCTION_SOLD, {
             auctionId,
-            ...payload,
+            winnerName: payload.winnerName,
+            finalPrice: payload.finalPrice,
+            winnerId: payload.winnerId,
             timestamp: new Date().toISOString(),
         });
         this.logger.log(`Emitted AUCTION_SOLD to ${room}`);

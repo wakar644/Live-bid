@@ -36,6 +36,12 @@ export class AuctionsController {
         return this.auctionsService.findAll(query);
     }
 
+    @Get('winners')
+    @Public()
+    async getWinners() {
+        return this.auctionsService.findWinners();
+    }
+
     @Get(':id')
     @Public()
     async findOne(@Param('id', ParseUUIDPipe) id: string) {

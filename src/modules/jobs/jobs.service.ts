@@ -60,27 +60,40 @@ export class JobsService {
         const delay = Math.max(0, reminderTime.getTime() - Date.now());
         const jobId = `reminder_${auctionId}`;
 
-        await this.auctionQueue.add(
-            JobType.ENDING_REMINDER,
-            { auctionId },
-            {
-                jobId,
-                delay,
-                attempts: 3,
-                backoff: {
-                    type: 'exponential',
-                    delay: 1000,
-                },
-                removeOnComplete: true,
-                removeOnFail: {
-                    age: 3600,
-                },
-            },
-        );
+        // Remove existing reminder if it exists (for anti-snipe extension)
+        const existingJob = await this.auctionQueue.getJob(jobId);
+        if (existingJob) {
+            await existingJob.remove();
+            this.logger.log(`Removed existing reminder job: ${jobId}`);
+        }
 
-        this.logger.log(
-            `Scheduled ending reminder for auction ${auctionId} in ${delay}ms`,
-        );
+        if (delay > 0) {
+            await this.auctionQueue.add(
+                JobType.ENDING_REMINDER,
+                { auctionId },
+                {
+                    jobId,
+                    delay,
+                    attempts: 3,
+                    backoff: {
+                        type: 'exponential',
+                        delay: 1000,
+                    },
+                    removeOnComplete: true,
+                    removeOnFail: {
+                        age: 3600,
+                    },
+                },
+            );
+
+            this.logger.log(
+                `Scheduled ending reminder for auction ${auctionId} in ${delay}ms`,
+            );
+        } else {
+            this.logger.warn(
+                `Reminder time for auction ${auctionId} is in the past, skipping scheduling`,
+            );
+        }
     }
 
     async scheduleOutbidNotification(
